@@ -1,27 +1,39 @@
-import json
+import sys
+import time
 
-class ConfigLoader:
-    def __init__(self, default_config, custom_config_path=None):
-        self.default_config = default_config
-        self.custom_config = self.load_custom_config(custom_config_path) if custom_config_path else {}
+def flatten_list(nested_list):
+    flat = []
+    for item in nested_list:
+        if isinstance(item, list):
+            flat.extend(flatten_list(item))
+        else:
+            flat.append(item)
+    return flat
 
-    def load_custom_config(self, path):
-        try:
-            with open(path, 'r') as file:
-                return json.load(file)
-        except FileNotFoundError:
-            return {}
-        except json.JSONDecodeError:
-            raise ValueError('Invalid JSON in the configuration file.')
+class TerminalSpinner:
+    def __init__(self, message="Processing"):
+        self.message = message
+        self.chars = "/—\\|"
+        self.running = False
 
-    def get_config(self):
-        combined_config = self.default_config.copy()
-        combined_config.update(self.custom_config)
-        return combined_config
+    def spin(self):
+        idx = 0
+        while self.running:
+            sys.stdout.write(f"\r{self.message} {self.chars[idx]}")
+            sys.stdout.flush()
+            idx = (idx + 1) % len(self.chars)
+            time.sleep(0.1)
+        sys.stdout.write("\r" + " " * (len(self.message) + 4) + "\r")
 
-# Example defaults
-if __name__ == '__main__':
-    defaults = {'host': 'localhost', 'port': 8080, 'debug': False}
-    loader = ConfigLoader(defaults, 'config.json')
-    config = loader.get_config()
-    print(config)
+def chunk_generator(data, size):
+    for i in range(0, len(data), size):
+        yield data[i:i + size]
+
+def safe_get(data_dict, *keys, default=None):
+    curr = data_dict
+    for key in keys:
+        if isinstance(curr, dict) and key in curr:
+            curr = curr[key]
+        else:
+            return default
+    return curr
