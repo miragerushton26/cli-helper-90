@@ -1,42 +1,36 @@
-import time
-import random
 import functools
-from typing import Callable, Any, Type, Tuple
+from typing import List, Generator
 
-def retry(
-    exceptions: Tuple[Type[BaseException], ...] = (Exception,),
-    tries: int = 4,
-    delay: float = 1.0,
-    backoff: float = 2.0,
-    jitter: bool = True
-) -> Callable:
-    """
-    Decorator implementing a robust retry mechanism with an iterator-driven
-    delay progression to maintain clean execution state.
-    """
-    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
-        @functools.wraps(func)
-        def wrapper(*args: Any, **kwargs: Any) -> Any:
-            def backoff_generator():
-                curr_delay = delay
-                for _ in range(tries):
-                    yield curr_delay
-                    curr_delay *= backoff
-                    if jitter:
-                        curr_delay += random.uniform(0, curr_delay * 0.1)
+class FastFuzzyMatcher:
+    """Optimized CLI command suggestion engine using pruned search."""
+    def __init__(self, commands: List[str]):
+        self.commands = commands
 
-            delay_iterator = backoff_generator()
+    @functools.lru_cache(maxsize=128)
+    def _levenshtein(self, s1: str, s2: str, max_dist: int) -> int:
+        if abs(len(s1) - len(s2)) > max_dist:
+            return max_dist + 1
+        
+        previous_row = list(range(len(s2) + 1))
+        for i, c1 in enumerate(s1):
+            current_row = [i + 1]
+            min_val = current_row[0]
+            for j, c2 in enumerate(s2):
+                insertions = previous_row[j + 1] + 1
+                deletions = current_row[j] + 1
+                substitutions = previous_row[j] + (c1 != c2)
+                cost = min(insertions, deletions, substitutions)
+                current_row.append(cost)
+                min_val = min(min_val, cost)
             
-            while True:
-                try:
-                    return func(*args, **kwargs)
-                except exceptions as e:
-                    try:
-                        next_delay = next(delay_iterator)
-                    except StopIteration:
-                        raise e
-                    
-                    print(f"[!] Retrying due to: {e}. Waiting {next_delay:.2f}s...", flush=True)
-                    time.sleep(next_delay)
-        return wrapper
-    return decorator
+            if min_val > max_dist:
+                return max_dist + 1
+            previous_row = current_row
+            
+        return previous_row[-1]
+
+    def suggest(self, query: str, threshold: int = 2) -> Generator[str, None, None]:
+        """Yields matches within the edit distance threshold."""
+        for cmd in self.commands:
+            if self._levenshtein(query, cmd, threshold) <= threshold:
+                yield cmd
