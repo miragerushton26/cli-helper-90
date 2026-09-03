@@ -1,38 +1,42 @@
-import json
-from typing import Any, Dict, List, Union
+import time
+import random
+import functools
+from typing import Callable, Any, Type, Tuple
 
+def retry(
+    exceptions: Tuple[Type[BaseException], ...] = (Exception,),
+    tries: int = 4,
+    delay: float = 1.0,
+    backoff: float = 2.0,
+    jitter: bool = True
+) -> Callable:
+    """
+    Decorator implementing a robust retry mechanism with an iterator-driven
+    delay progression to maintain clean execution state.
+    """
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+        @functools.wraps(func)
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            def backoff_generator():
+                curr_delay = delay
+                for _ in range(tries):
+                    yield curr_delay
+                    curr_delay *= backoff
+                    if jitter:
+                        curr_delay += random.uniform(0, curr_delay * 0.1)
 
-def deep_flatten(data: Union[Dict[str, Any], List[Any]], parent_key: str = '', sep: str = '.') -> Dict[str, Any]:
-    items: List[tuple] = []
-    
-    if isinstance(data, dict):
-        iterable = data.items()
-    elif isinstance(data, list):
-        iterable = enumerate(data)
-    else:
-        return {parent_key: data}
-
-    for k, v in iterable:
-        new_key = f"{parent_key}{sep}{k}" if parent_key else str(k)
-        if isinstance(v, (dict, list)):
-            items.extend(deep_flatten(v, new_key, sep=sep).items())
-        else:
-            items.append((new_key, v))
+            delay_iterator = backoff_generator()
             
-    return dict(items)
-
-
-def safe_json_load(raw_input: str) -> Dict[str, Any]:
-    try:
-        parsed = json.loads(raw_input)
-        if isinstance(parsed, dict):
-            return parsed
-        return {"data": parsed}
-    except (json.JSONDecodeError, TypeError):
-        return {"raw_fallback": raw_input}
-
-
-def chunk_sequence(sequence: List[Any], size: int) -> List[List[Any]]:
-    if size <= 0:
-        raise ValueError("Chunk size must be greater than zero")
-    return [sequence[i:i + size] for i in range(0, len(sequence), size)]
+            while True:
+                try:
+                    return func(*args, **kwargs)
+                except exceptions as e:
+                    try:
+                        next_delay = next(delay_iterator)
+                    except StopIteration:
+                        raise e
+                    
+                    print(f"[!] Retrying due to: {e}. Waiting {next_delay:.2f}s...", flush=True)
+                    time.sleep(next_delay)
+        return wrapper
+    return decorator
