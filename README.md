@@ -1,48 +1,53 @@
 # cli-helper-90
 
-`cli-helper-90` is a versatile command-line interface (CLI) utility designed to streamline various tasks for developers and system administrators. With a focus on efficiency and user-friendliness, this Python-based tool enhances productivity through a set of powerful features tailored for everyday use.
+`cli-helper-90` is a lightweight Python toolkit designed to streamline the development of robust command-line interfaces. It abstracts complex argument parsing and color formatting into a clean, developer-friendly API.
 
-## Features
+### Features
+*   **Intuitive Command Routing:** Simplify subcommand registration using intuitive function decorators.
+*   **Built-in Terminal UI:** Includes pre-configured templates for progress bars, spinners, and formatted table outputs.
+*   **Auto-Generated Documentation:** Automatically extracts docstrings to produce clean `--help` menus for your end-users.
+*   **Environment Integration:** Native support for loading configuration from `.env` files with a single method call.
 
-- **File Management:** Effortlessly copy, move, and delete files and directories with intuitive commands.
-- **System Monitoring:** Check system resources such as CPU and memory usage with easy-to-read summaries.
-- **Task Automation:** Create and manage automated scripts to schedule recurring tasks right from the command line.
-- **Custom Aliases:** Set up custom command aliases for common commands to save time and reduce typing.
+### Installation
 
-## Installation
-
-To install `cli-helper-90`, ensure you have Python 3.6 or higher, then run the following command in your terminal:
+Install `cli-helper-90` directly from PyPI:
 
 ```bash
 pip install cli-helper-90
 ```
 
-Alternatively, you can clone the repository and install it locally:
+To include optional aesthetic dependencies, use:
 
 ```bash
-git clone https://github.com/Developer/cli-helper-90.git
-cd cli-helper-90
-python setup.py install
+pip install cli-helper-90[ui]
 ```
 
-## Basic Usage Example
+### Basic Usage
 
-After installation, you can start using `cli-helper-90` directly from the command line. Below is a simple example of how to display system resource usage:
+Define your CLI tools with minimal boilerplate using the `CommandGroup` class:
+
+```python
+from cli_helper import CommandGroup
+
+cli = CommandGroup(name="app", version="1.0.0")
+
+@cli.command(help="Greet the user")
+def greet(name: str):
+    print(f"Hello, {name}!")
+
+if __name__ == "__main__":
+    cli.run()
+```
+
+Run your new CLI tool from the terminal:
 
 ```bash
-cli-helper-90 monitor --resources
+python app.py greet --name "Developer"
+# Output: Hello, Developer!
 ```
 
-This command will output a concise summary of your system's current CPU and memory usage.
+### License
 
-For more commands and usage details, please refer to the official documentation available in the `docs` directory.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## License
-
-![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)
-
-`cli-helper-90` is released under the MIT License. See the [LICENSE](LICENSE) file for more information.
-
----
-
-Join our community on GitHub for updates, contributions, and support! Whether you're looking to enhance your development workflow or automate routine tasks, `cli-helper-90` has you covered.
+This project is licensed under the MIT License. See the `LICENSE` file for details.
