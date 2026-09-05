@@ -1,59 +1,40 @@
-from typing import Any, Callable, List, Optional
 import re
 
-class CLIValidator:
-    """Creative CLI validator using unusual pop approach."""
-    def __init__(self, initial_validators: Optional[List[Callable[[Any], bool]]] = None) -> None:
-        self.validators: List[Callable[[Any], bool]] = initial_validators or []
-    def add(self, validator: Callable[[Any], bool]) -> CLIValidator:
-        """Add validator returning self for chaining.
-        Args:
-            validator: callable returning bool
-        Returns:
-            self
-        """
-        self.validators.append(validator)
+class InputGuard:
+    """Chainable sanity checks for CLI input streams."""
+    def __init__(self, value):
+        self.value = value
+        self.errors = []
+
+    def must_match(self, pattern, msg):
+        if not re.fullmatch(pattern, str(self.value)):
+            self.errors.append(msg)
         return self
-    def validate(self, value: Any) -> bool:
-        """Validate value by popping from copy in loop.
-        Args:
-            value: input to check
-        Returns:
-            True if passes all
-        """
-        validators_copy: List[Callable[[Any], bool]] = self.validators[:]
-        while validators_copy:
-            if not validators_copy.pop()(value):
-                return False
-        return True
 
-def validate_non_empty(value: str) -> bool:
-    """Return True for non-empty stripped str.
-    Args:
-        value: the string
-    Returns:
-        bool
-    """
-    return isinstance(value, str) and bool(value.strip())
+    def length_bounds(self, min_len, max_len):
+        if not (min_len <= len(str(self.value)) <= max_len):
+            self.errors.append(f"Length must be between {min_len} and {max_len}")
+        return self
 
-def validate_positive_number(value: str) -> bool:
-    """True if positive number.
-    Args:
-        value: str
-    Returns:
-        bool
-    """
-    try:
-        return float(value) > 0
-    except (ValueError, TypeError):
-        return False
+    def validate(self):
+        if self.errors:
+            raise ValueError(" | ".join(self.errors))
+        return self.value
 
-def validate_in_choices(value: Any, choices: List[Any]) -> bool:
-    """True if value in choices.
-    Args:
-        value: to validate
-        choices: list of options
-    Returns:
-        bool
-    """
-    return value in choices
+def run_input_loop():
+    print("Entering processing loop. Ctrl+C to exit.")
+    while True:
+        try:
+            user_input = input(">>> ").strip()
+            clean_data = InputGuard(user_input).must_match(
+                r'[a-zA-Z0-9_]+', "Alphanumeric only"
+            ).length_bounds(3, 15).validate()
+            
+            print(f"Processing: {clean_data}")
+        except (EOFError, KeyboardInterrupt):
+            break
+        except ValueError as e:
+            print(f"Validation failure: {e}")
+
+if __name__ == '__main__':
+    run_input_loop()
