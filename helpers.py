@@ -1,39 +1,37 @@
-import sys
 import time
+import functools
+import random
+from typing import Callable, Any
 
-def flatten_list(nested_list):
-    flat = []
-    for item in nested_list:
-        if isinstance(item, list):
-            flat.extend(flatten_list(item))
-        else:
-            flat.append(item)
-    return flat
+def retry_operation(retries: int = 3, delay: float = 1.0, backoff: float = 2.0):
+    def decorator(func: Callable):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs) -> Any:
+            local_delay = delay
+            for attempt in range(retries):
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    if attempt == retries - 1:
+                        raise e
+                    time.sleep(local_delay + random.uniform(0, 0.1))
+                    local_delay *= backoff
+            return None
+        return wrapper
+    return decorator
 
-class TerminalSpinner:
-    def __init__(self, message="Processing"):
-        self.message = message
-        self.chars = "/—\\|"
-        self.running = False
-
-    def spin(self):
-        idx = 0
-        while self.running:
-            sys.stdout.write(f"\r{self.message} {self.chars[idx]}")
-            sys.stdout.flush()
-            idx = (idx + 1) % len(self.chars)
-            time.sleep(0.1)
-        sys.stdout.write("\r" + " " * (len(self.message) + 4) + "\r")
-
-def chunk_generator(data, size):
-    for i in range(0, len(data), size):
-        yield data[i:i + size]
-
-def safe_get(data_dict, *keys, default=None):
-    curr = data_dict
-    for key in keys:
-        if isinstance(curr, dict) and key in curr:
-            curr = curr[key]
-        else:
-            return default
-    return curr
+def persistent_request(max_attempts: int = 5):
+    """
+    A higher-order execution harness for fragile network calls
+    that employs exponential backoff with jitter.
+    """
+    def execute(operation: Callable, *args, **kwargs):
+        attempt = 0
+        while attempt < max_attempts:
+            try:
+                return operation(*args, **kwargs)
+            except (ConnectionError, TimeoutError):
+                attempt += 1
+                if attempt >= max_attempts: raise
+                time.sleep((2 ** attempt) * 0.1)
+    return execute
