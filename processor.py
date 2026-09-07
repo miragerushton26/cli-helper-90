@@ -1,36 +1,36 @@
-import sys
-import re
-from typing import Callable, Iterable, Generator
+import functools
+import logging
 
-class TextChunk(str):
-    """Custom string wrapper providing fluent transformation primitives."""
-    def clean(self) -> 'TextChunk':
-        return TextChunk(' '.join(self.split()))
+class DataProcessor:
+    def __init__(self, settings=None):
+        self.settings = settings or {}
+        self.pipeline = []
 
-    def mask_secrets(self) -> 'TextChunk':
-        pattern = r'(api[_-]?key|password|token)\s*=\s*\S+'
-        return TextChunk(re.sub(pattern, r'\1=***', self, flags=re.IGNORECASE))
+    def register_step(self, func):
+        self.pipeline.append(func)
+        return func
 
-    def wrap_cli(self, prefix: str = "[OUT]") -> 'TextChunk':
-        return TextChunk("\n".join(f"{prefix} {line}" for line in self.splitlines()))
+    def execute(self, data):
+        return functools.reduce(lambda acc, step: step(acc), self.pipeline, data)
 
-class StreamProcessor:
-    """Dynamic generator-based CLI output processor pipeline."""
-    def __init__(self, *steps: Callable[[TextChunk], TextChunk]):
-        self._steps = steps or (TextChunk.clean, TextChunk.mask_secrets)
+def sanitize_input(data):
+    if isinstance(data, str):
+        return data.strip().lower()
+    return data
 
-    def __rshift__(self, next_step: Callable[[TextChunk], TextChunk]) -> 'StreamProcessor':
-        """Overload >> operator to append processing steps."""
-        return StreamProcessor(*self._steps, next_step)
+def transform_to_list(data):
+    return [data] if not isinstance(data, list) else data
 
-    def process(self, stream: Iterable[str]) -> Generator[str, None, None]:
-        for raw_item in stream:
-            chunk = TextChunk(str(raw_item))
-            for step in self._steps:
-                chunk = step(chunk)
-            yield str(chunk)
+def run_pipeline(input_data):
+    proc = DataProcessor()
+    proc.register_step(sanitize_input)
+    proc.register_step(transform_to_list)
+    try:
+        return proc.execute(input_data)
+    except Exception as e:
+        logging.error(f"pipeline failure: {e}")
+        return []
 
-def process_cli_output(data_stream: Iterable[str]) -> None:
-    pipeline = StreamProcessor() >> (lambda c: c.wrap_cli(">>>"))
-    for output in pipeline.process(data_stream):
-        sys.stdout.write(f"{output}\n")
+if __name__ == "__main__":
+    result = run_pipeline("  SAMPLE_DATA  ")
+    print(result)
