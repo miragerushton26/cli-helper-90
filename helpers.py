@@ -1,37 +1,54 @@
 import time
 import functools
-import random
-from typing import Callable, Any
+import collections
+from typing import Callable, Any, Dict
 
-def retry_operation(retries: int = 3, delay: float = 1.0, backoff: float = 2.0):
+def memoize_with_ttl(seconds: int = 300):
     def decorator(func: Callable):
+        cache: Dict[tuple, tuple] = {}
         @functools.wraps(func)
-        def wrapper(*args, **kwargs) -> Any:
-            local_delay = delay
-            for attempt in range(retries):
-                try:
-                    return func(*args, **kwargs)
-                except Exception as e:
-                    if attempt == retries - 1:
-                        raise e
-                    time.sleep(local_delay + random.uniform(0, 0.1))
-                    local_delay *= backoff
-            return None
+        def wrapper(*args, **kwargs):
+            key = (args, tuple(sorted(kwargs.items())))
+            now = time.time()
+            if key in cache:
+                result, timestamp = cache[key]
+                if now - timestamp < seconds:
+                    return result
+            result = func(*args, **kwargs)
+            cache[key] = (result, now)
+            return result
         return wrapper
     return decorator
 
-def persistent_request(max_attempts: int = 5):
-    """
-    A higher-order execution harness for fragile network calls
-    that employs exponential backoff with jitter.
-    """
-    def execute(operation: Callable, *args, **kwargs):
-        attempt = 0
-        while attempt < max_attempts:
-            try:
-                return operation(*args, **kwargs)
-            except (ConnectionError, TimeoutError):
-                attempt += 1
-                if attempt >= max_attempts: raise
-                time.sleep((2 ** attempt) * 0.1)
-    return execute
+def safe_dict_get(data: dict, path: str, default: Any = None):
+    keys = path.split('.')
+    for key in keys:
+        if isinstance(data, dict):
+            data = data.get(key, default)
+        else:
+            return default
+    return data
+
+def retry(attempts: int = 3, delay: float = 0.5):
+    def decorator(func: Callable):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            last_ex = None
+            for i in range(attempts):
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    last_ex = e
+                    time.sleep(delay * (2 ** i))
+            raise last_ex
+        return wrapper
+    return decorator
+
+def flatten_list(nested: list) -> list:
+    flat = []
+    for item in nested:
+        if isinstance(item, list):
+            flat.extend(flatten_list(item))
+        else:
+            flat.append(item)
+    return flat
