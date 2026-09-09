@@ -1,36 +1,57 @@
+import asyncio
 import functools
-from typing import List, Generator
+import inspect
+import random
+import time
+from typing import Any, Callable, Generator, Type, Union
 
-class FastFuzzyMatcher:
-    """Optimized CLI command suggestion engine using pruned search."""
-    def __init__(self, commands: List[str]):
-        self.commands = commands
 
-    @functools.lru_cache(maxsize=128)
-    def _levenshtein(self, s1: str, s2: str, max_dist: int) -> int:
-        if abs(len(s1) - len(s2)) > max_dist:
-            return max_dist + 1
-        
-        previous_row = list(range(len(s2) + 1))
-        for i, c1 in enumerate(s1):
-            current_row = [i + 1]
-            min_val = current_row[0]
-            for j, c2 in enumerate(s2):
-                insertions = previous_row[j + 1] + 1
-                deletions = current_row[j] + 1
-                substitutions = previous_row[j] + (c1 != c2)
-                cost = min(insertions, deletions, substitutions)
-                current_row.append(cost)
-                min_val = min(min_val, cost)
-            
-            if min_val > max_dist:
-                return max_dist + 1
-            previous_row = current_row
-            
-        return previous_row[-1]
+def _fibonacci_jitter(max_retries: int) -> Generator[float, None, None]:
+    """Generates Fibonacci-based sleep intervals with a pinch of chaotic jitter."""
+    a, b = 1.0, 2.0
+    for _ in range(max_retries):
+        jitter = random.uniform(-0.1 * a, 0.1 * a)
+        yield max(0.1, a + jitter)
+        a, b = b, a + b
 
-    def suggest(self, query: str, threshold: int = 2) -> Generator[str, None, None]:
-        """Yields matches within the edit distance threshold."""
-        for cmd in self.commands:
-            if self._levenshtein(query, cmd, threshold) <= threshold:
-                yield cmd
+
+def resilient_call(
+    exceptions: Union[Type[Exception], tuple[Type[Exception], ...]] = Exception,
+    max_retries: int = 5,
+    on_failure: Callable[[Exception, int], None] = lambda e, r: None,
+):
+    """Decorator to retry flaky operations using a Fibonacci-jitter backoff.
+
+    Works seamlessly on both synchronous and asynchronous targets.
+    """
+
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+        @functools.wraps(func)
+        def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
+            backoff_gen = _fibonacci_jitter(max_retries)
+            for attempt, delay in enumerate(backoff_gen, 1):
+                try:
+                    return func(*args, **kwargs)
+                except exceptions as err:
+                    on_failure(err, attempt)
+                    if attempt == max_retries:
+                        raise err
+                    time.sleep(delay)
+
+        @functools.wraps(func)
+        async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
+            backoff_gen = _fibonacci_jitter(max_retries)
+            for attempt, delay in enumerate(backoff_gen, 1):
+                try:
+                    return await func(*args, **kwargs)
+                except exceptions as err:
+                    on_failure(err, attempt)
+                    if attempt == max_retries:
+                        raise err
+                    await asyncio.sleep(delay)
+
+        if inspect.iscoroutinefunction(func):
+            return async_wrapper
+        return sync_wrapper
+
+    return decorator
