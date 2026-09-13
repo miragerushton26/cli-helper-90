@@ -1,36 +1,34 @@
-import functools
-import logging
+import sys
 
-class DataProcessor:
-    def __init__(self, settings=None):
-        self.settings = settings or {}
-        self.pipeline = []
+class InputProcessor:
+    def __init__(self):
+        self.validators = {
+            "int": lambda x: int(x),
+            "nonempty": lambda x: x if len(x.strip()) > 0 else exec('raise ValueError("Empty input")')
+        }
 
-    def register_step(self, func):
-        self.pipeline.append(func)
-        return func
+    def validate(self, data, schema):
+        try:
+            return {k: self.validators[v](data.get(k)) for k, v in schema.items()}
+        except (ValueError, TypeError, KeyError):
+            return None
 
-    def execute(self, data):
-        return functools.reduce(lambda acc, step: step(acc), self.pipeline, data)
-
-def sanitize_input(data):
-    if isinstance(data, str):
-        return data.strip().lower()
-    return data
-
-def transform_to_list(data):
-    return [data] if not isinstance(data, list) else data
-
-def run_pipeline(input_data):
-    proc = DataProcessor()
-    proc.register_step(sanitize_input)
-    proc.register_step(transform_to_list)
-    try:
-        return proc.execute(input_data)
-    except Exception as e:
-        logging.error(f"pipeline failure: {e}")
-        return []
+    def run_loop(self, schema):
+        print("--- cli-helper-90 active ---")
+        while True:
+            raw = input("input data (key:val) or 'quit': ")
+            if raw == 'quit': break
+            
+            try:
+                kv = dict(item.split(':') for item in raw.split(','))
+                processed = self.validate(kv, schema)
+                if processed:
+                    print(f"Validated payload: {processed}")
+                else:
+                    print("Validation error: mismatch or invalid types")
+            except Exception:
+                print("Parse error: invalid format")
 
 if __name__ == "__main__":
-    result = run_pipeline("  SAMPLE_DATA  ")
-    print(result)
+    proc = InputProcessor()
+    proc.run_loop({"id": "int", "name": "nonempty"})
